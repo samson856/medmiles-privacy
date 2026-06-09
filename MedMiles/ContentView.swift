@@ -1,24 +1,34 @@
-//
-//  ContentView.swift
-//  MedMiles
-//
-//  Created by Samuel Canales on 3/19/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @EnvironmentObject var authService: AuthService
 
-#Preview {
-    ContentView()
+    var body: some View {
+        TabView {
+            // Home / Dashboard
+            DashboardView()
+                .tabItem {
+                    Label("Home", systemImage: "square.grid.2x2.fill")
+                }
+
+            // Income
+            IncomeTabView()
+                .tabItem {
+                    Label("Income", systemImage: "banknote.fill")
+                }
+
+            // Trips
+            TripsTabView()
+                .tabItem {
+                    Label("Trips", systemImage: "road.lanes")
+                }
+
+            // Meals
+            MealTabView()
+                .tabItem {
+                    Label("Meals", systemImage: "cup.and.heat.waves.fill")
+                }
+        }
+        .tint(Color(Constants.Colors.mintTeal))
+    }
 }

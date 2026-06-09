@@ -1,0 +1,55 @@
+<svg width="1024" height="1024" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <!-- MedMiles — Final: vector M, dashes guaranteed-centered on right thick stroke -->
+  <rect width="500" height="500" rx="112" fill="#1f1f22"/>
+
+  <!-- 
+    Serif M as a SINGLE CLOSED PATH so stroke positions are exact and font-independent.
+    Constructed Times Roman style with:
+      - Thin left stem at x=140..160 (width 20)
+      - Inner diagonals: left meets valley at x=205, right starts at x=215
+      - Thick right stem at x=295..335 (width 40, center 315)
+      - Serifs top and bottom
+    All M geometry is in the range x=110..365, y=140..360
+  -->
+  <path d="
+    M 110 360
+    L 110 345
+    L 128 345
+    L 128 155
+    L 110 155
+    L 110 140
+    L 175 140
+    L 215 305
+    L 255 140
+    L 365 140
+    L 365 155
+    L 350 155
+    L 350 345
+    L 365 345
+    L 365 360
+    L 280 360
+    L 280 345
+    L 295 345
+    L 295 165
+    L 245 360
+    L 200 360
+    L 155 165
+    L 155 345
+    L 178 345
+    L 178 360
+    Z
+  " fill="#00b5a5"/>
+
+  <!--
+    Right thick stem is x=295..350, center = 322.5
+    Vertical extent y=155..345
+  -->
+  <line x1="322" y1="180" x2="322" y2="330" stroke="#1f1f22" stroke-width="8" stroke-linecap="round" stroke-dasharray="4 22"/>
+
+  <!-- Receipt at the bottom-right end of the right stem -->
+  <path d="M 370 320 L 440 320 L 440 425 L 433 418 L 426 425 L 419 418 L 412 425 L 405 418 L 398 425 L 391 418 L 384 425 L 377 418 L 370 425 Z" fill="#ffffff"/>
+  <line x1="378" y1="340" x2="432" y2="340" stroke="#1f1f22" stroke-width="2.5"/>
+  <line x1="378" y1="355" x2="428" y2="355" stroke="#1f1f22" stroke-width="2.5"/>
+  <line x1="378" y1="370" x2="432" y2="370" stroke="#1f1f22" stroke-width="2.5"/>
+  <text x="405" y="405" text-anchor="middle" font-family="Georgia, serif" font-size="26" font-weight="700" fill="#00b5a5">$</text>
+</svg>

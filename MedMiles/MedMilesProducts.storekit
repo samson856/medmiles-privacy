@@ -1,0 +1,80 @@
+{
+  "identifier": "MedMilesProducts",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "199.99",
+      "familyShareable": false,
+      "internalID": "com.samcan.medmiles.lifetime",
+      "localizations": [
+        {
+          "description": "One-time purchase — unlimited access forever",
+          "displayName": "MedMiles Pro Lifetime",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.samcan.medmiles.lifetime",
+      "referenceName": "Pro Lifetime",
+      "type": "NonConsumable"
+    }
+  ],
+  "settings": {
+    "_applicationInternalID": "medmiles",
+    "_developerTeamID": ""
+  },
+  "subscriptionGroups": [
+    {
+      "id": "medmiles.pro",
+      "localizations": [],
+      "name": "MedMiles Pro",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "9.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "com.samcan.medmiles.monthly",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Unlimited trips, expenses, credentials, and exports",
+              "displayName": "MedMiles Pro Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.samcan.medmiles.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Pro Monthly",
+          "subscriptionGroupID": "medmiles.pro",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "89.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "com.samcan.medmiles.yearly",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Unlimited trips, expenses, credentials, and exports — save 33%",
+              "displayName": "MedMiles Pro Annual",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.samcan.medmiles.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Pro Annual",
+          "subscriptionGroupID": "medmiles.pro",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 3,
+    "minor": 0
+  }
+}
