@@ -37,7 +37,7 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: - Load All YTD Data
 
-    func loadDashboard(userId: UUID) async {
+    func loadDashboard(userId: UUID, attempt: Int = 0) async {
         isLoading = true
         defer { isLoading = false }
 
@@ -164,8 +164,38 @@ final class DashboardViewModel: ObservableObject {
             }
             ytdMiscExpenses = totalMisc
 
+            // Success — clear any stale error banner left over from a prior attempt.
+            errorMessage = nil
+
+        } catch is CancellationError {
+            // A newer load replaced this one, or the view went away. Not a real error.
+            return
         } catch {
             let nsError = error as NSError
+
+            // URLSession reports a cancelled request as -999. That is NOT a
+            // connectivity problem — it happens during normal navigation, the
+            // launch transition, or overlapping refreshes — so never alert on it.
+            if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
+                return
+            }
+
+            // Retry once for genuine transient hiccups (cold start, brief drop)
+            // before showing the user an alert.
+            let transientCodes = [
+                NSURLErrorTimedOut,
+                NSURLErrorCannotConnectToHost,
+                NSURLErrorCannotFindHost,
+                NSURLErrorNetworkConnectionLost,
+                NSURLErrorNotConnectedToInternet,
+            ]
+            if attempt == 0, nsError.domain == NSURLErrorDomain, transientCodes.contains(nsError.code) {
+                try? await Task.sleep(nanoseconds: 800_000_000) // 0.8s
+                if Task.isCancelled { return }
+                await loadDashboard(userId: userId, attempt: 1)
+                return
+            }
+
             if nsError.domain == NSURLErrorDomain {
                 errorMessage = "Unable to connect. Check your internet connection and try again."
             } else {
