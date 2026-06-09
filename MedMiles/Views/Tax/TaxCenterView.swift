@@ -171,11 +171,25 @@ struct TaxCenterView: View {
 
                     Divider().padding(.vertical, 4)
 
-                    Text("Projected Annual Deductions")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .padding(.vertical, 4)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.title3)
+                                .foregroundColor(Color(Constants.Colors.mintTeal))
+                            Text("Projected Annual Deductions")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.primary)
+                        }
+                        Text("Rough estimate — final amounts may vary")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color(Constants.Colors.mintTeal).opacity(0.10))
+                    .cornerRadius(10)
+                    .padding(.vertical, 8)
 
                     if viewModel.mileageDeduction > 0 {
                         TaxLineItem(label: "Mileage (\(NSDecimalNumber(decimal: viewModel.totalMiles).intValue) mi × $\(viewModel.tc.irsMileageRate))",
