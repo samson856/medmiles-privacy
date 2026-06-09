@@ -27,6 +27,14 @@ struct MealLogView: View {
     @State private var isScanning = false
     @State private var autoSaveMessage: String?
 
+    // Day-editor / merge state (one meal entry per day)
+    @State private var existingMealId: UUID?
+    @State private var showSlotConflict = false
+    @State private var conflictSlot: ScanPrefillData.MealSlot?
+    @State private var conflictExisting: Decimal = 0
+    @State private var conflictScanned: Decimal = 0
+    @State private var didInitialLoad = false
+
     init(viewModel: MealViewModel,
          prefillData: ScanPrefillData? = nil,
          onSaveComplete: ((UUID) -> Void)? = nil) {
@@ -46,19 +54,10 @@ struct MealLogView: View {
         _lunch = State(initialValue: slot == .lunch ? amt : "")
         _dinner = State(initialValue: slot == .dinner ? amt : "")
 
-        // Pre-save the scanned receipt image
-        if let image = prefillData?.capturedImage {
-            var filenames: [String] = []
-            let tempId = UUID()
-            if let filename = LocalStorageService.shared.saveReceipt(image: image, for: tempId) {
-                filenames.append(filename)
-            }
-            _receiptFilenames = State(initialValue: filenames)
-            _pendingImages = State(initialValue: [image])
-        } else {
-            _receiptFilenames = State(initialValue: [])
-            _pendingImages = State(initialValue: [])
-        }
+        // The scanned receipt image is saved once in `.task` (not here) so it
+        // can't be re-saved if SwiftUI re-initializes the view on a re-render.
+        _receiptFilenames = State(initialValue: [])
+        _pendingImages = State(initialValue: [])
     }
 
     private var isInScannerMode: Bool { prefillData != nil }
@@ -74,6 +73,16 @@ struct MealLogView: View {
         Form {
             Section {
                 DatePicker("Date", selection: $date, displayedComponents: .date)
+            }
+
+            Section {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(Color(Constants.Colors.mintTeal))
+                    Text("MedMiles keeps one meal entry per day. Double-check each amount is under the right meal (breakfast, lunch, or dinner).")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Section(header: Text("Meals")) {
@@ -210,6 +219,36 @@ struct MealLogView: View {
                 attachPendingImageOnly()
             }
         }
+        .task {
+            guard !didInitialLoad else { return }
+            didInitialLoad = true
+            // Save the scanned receipt image once (scanner mode only).
+            if let image = prefillData?.capturedImage {
+                let tempId = UUID()
+                if let filename = LocalStorageService.shared.saveReceipt(image: image, for: tempId) {
+                    receiptFilenames.append(filename)
+                }
+                pendingImages.append(image)
+            }
+            guard let userId = authService.currentSession?.user.id else { return }
+            if viewModel.meals.isEmpty {
+                await viewModel.loadAll(userId: userId)
+            }
+            loadExistingDay(initial: true)
+        }
+        .onChange(of: date) { _, _ in
+            loadExistingDay(initial: false)
+        }
+        .alert("\(conflictSlot?.rawValue ?? "Meal") already logged", isPresented: $showSlotConflict, presenting: conflictSlot) { slot in
+            Button("Add (\(money(conflictExisting + conflictScanned)))") {
+                setField(slot, conflictExisting + conflictScanned)
+            }
+            Button("Replace (\(money(conflictScanned)))") {
+                setField(slot, conflictScanned)
+            }
+        } message: { slot in
+            Text("\(slot.rawValue) already has \(money(conflictExisting)) for this day. Add the new \(money(conflictScanned)) to it, or replace it?")
+        }
         .overlay {
             if isScanning {
                 VStack(spacing: 12) {
@@ -333,31 +372,47 @@ struct MealLogView: View {
 
     private func autoSaveNewMeal(date saveDate: Date, slot: ScanPrefillData.MealSlot, amount: String, image: UIImage) {
         guard let userId = authService.currentSession?.user.id else { return }
-
-        let b = slot == .breakfast ? amount : ""
-        let l = slot == .lunch ? amount : ""
-        let d = slot == .dinner ? amount : ""
+        let newAmt = max(Decimal(string: amount) ?? 0, 0)
 
         Task {
-            let mealId = await viewModel.saveMeal(
-                userId: userId,
-                date: saveDate,
-                breakfast: b,
-                lunch: l,
-                dinner: d,
-                agencyId: nil,
-                receiptNumber: "",
-                notes: pendingScanResult?.merchantName ?? ""
-            )
-            if let mealId {
-                _ = LocalStorageService.shared.saveReceipt(image: image, for: mealId)
+            // One entry per day: if that day already has a meal, merge into it.
+            if let existing = viewModel.meals.first(where: {
+                Calendar.current.isDate($0.displayDate, inSameDayAs: saveDate)
+            }) {
+                let b = existing.breakfast + (slot == .breakfast ? newAmt : 0)
+                let l = existing.lunch + (slot == .lunch ? newAmt : 0)
+                let d = existing.dinner + (slot == .dinner ? newAmt : 0)
+                let ok = await viewModel.updateMeal(
+                    mealId: existing.id,
+                    userId: userId,
+                    date: saveDate,
+                    breakfast: fieldString(b),
+                    lunch: fieldString(l),
+                    dinner: fieldString(d),
+                    agencyId: existing.agencyId,
+                    receiptNumber: existing.receiptNumber ?? "",
+                    notes: existing.businessPurpose ?? (pendingScanResult?.merchantName ?? "")
+                )
+                if ok { _ = LocalStorageService.shared.saveReceipt(image: image, for: existing.id) }
+            } else {
+                let mealId = await viewModel.saveMeal(
+                    userId: userId,
+                    date: saveDate,
+                    breakfast: slot == .breakfast ? amount : "",
+                    lunch: slot == .lunch ? amount : "",
+                    dinner: slot == .dinner ? amount : "",
+                    agencyId: nil,
+                    receiptNumber: "",
+                    notes: pendingScanResult?.merchantName ?? ""
+                )
+                if let mealId { _ = LocalStorageService.shared.saveReceipt(image: image, for: mealId) }
+            }
 
-                let formatter = DateFormatter()
-                formatter.dateStyle = .medium
-                autoSaveMessage = "Meal saved for\n\(formatter.string(from: saveDate))"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    autoSaveMessage = nil
-                }
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            autoSaveMessage = "Meal saved for\n\(formatter.string(from: saveDate))"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                autoSaveMessage = nil
             }
         }
     }
@@ -367,51 +422,150 @@ struct MealLogView: View {
     private func saveMeal() {
         guard let userId = authService.currentSession?.user.id else { return }
         Task {
-            let mealId = await viewModel.saveMeal(
-                userId: userId,
-                date: date,
-                breakfast: breakfast,
-                lunch: lunch,
-                dinner: dinner,
-                agencyId: selectedAgencyId,
-                receiptNumber: receiptNumber,
-                notes: businessPurpose
-            )
-            if let mealId {
-                // Re-save receipt files under the meal's actual ID
-                for oldFilename in receiptFilenames {
-                    if let image = LocalStorageService.shared.loadReceipt(filename: oldFilename) {
-                        _ = LocalStorageService.shared.saveReceipt(image: image, for: mealId)
-                        LocalStorageService.shared.deleteReceipt(filename: oldFilename)
-                    } else {
-                        let url = LocalStorageService.shared.receiptURL(filename: oldFilename)
-                        if let data = try? Data(contentsOf: url) {
-                            let ext = (oldFilename as NSString).pathExtension
-                            _ = LocalStorageService.shared.saveFile(data: data, for: mealId, extension: ext)
-                            LocalStorageService.shared.deleteReceipt(filename: oldFilename)
-                        }
-                    }
-                }
+            // One entry per day: update the existing entry if this day already has
+            // one, otherwise insert a new one.
+            let savedId: UUID?
+            if let existingId = existingMealId {
+                let ok = await viewModel.updateMeal(
+                    mealId: existingId,
+                    userId: userId,
+                    date: date,
+                    breakfast: breakfast,
+                    lunch: lunch,
+                    dinner: dinner,
+                    agencyId: selectedAgencyId,
+                    receiptNumber: receiptNumber,
+                    notes: businessPurpose
+                )
+                savedId = ok ? existingId : nil
+            } else {
+                savedId = await viewModel.saveMeal(
+                    userId: userId,
+                    date: date,
+                    breakfast: breakfast,
+                    lunch: lunch,
+                    dinner: dinner,
+                    agencyId: selectedAgencyId,
+                    receiptNumber: receiptNumber,
+                    notes: businessPurpose
+                )
+            }
 
-                onSaveComplete?(mealId)
-                showSavedConfirmation = true
-                resetForm()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    showSavedConfirmation = false
+            guard let mealId = savedId else { return }
+            reassociateReceipts(to: mealId)
+            // The form now represents the saved day's single entry, so any
+            // further save updates it instead of inserting a duplicate.
+            existingMealId = mealId
+            receiptFilenames = LocalStorageService.shared.receiptFilenames(for: mealId)
+            onSaveComplete?(mealId)
+            showSavedConfirmation = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                showSavedConfirmation = false
+            }
+        }
+    }
+
+    /// Re-saves any receipt files that aren't yet under `mealId` (e.g. freshly
+    /// scanned ones stored under a temp id), and leaves already-associated ones.
+    private func reassociateReceipts(to mealId: UUID) {
+        let prefix = mealId.uuidString
+        for oldFilename in receiptFilenames where !oldFilename.hasPrefix(prefix) {
+            if let image = LocalStorageService.shared.loadReceipt(filename: oldFilename) {
+                _ = LocalStorageService.shared.saveReceipt(image: image, for: mealId)
+                LocalStorageService.shared.deleteReceipt(filename: oldFilename)
+            } else {
+                let url = LocalStorageService.shared.receiptURL(filename: oldFilename)
+                if let data = try? Data(contentsOf: url) {
+                    let ext = (oldFilename as NSString).pathExtension
+                    _ = LocalStorageService.shared.saveFile(data: data, for: mealId, extension: ext)
+                    LocalStorageService.shared.deleteReceipt(filename: oldFilename)
                 }
             }
         }
     }
 
-    private func resetForm() {
-        date = Date()
-        breakfast = ""
-        lunch = ""
-        dinner = ""
-        selectedAgencyId = nil
-        receiptNumber = ""
-        businessPurpose = ""
-        receiptFilenames = []
-        pendingImages = []
+    // MARK: - Day Editor (one entry per day)
+
+    /// Loads the meal entry for the current `date` (if any) so the form always
+    /// represents that single day. In scanner mode it merges the scanned amount
+    /// into the chosen slot, prompting on a conflict.
+    private func loadExistingDay(initial: Bool) {
+        // Drop receipts loaded from a previously-shown day so they aren't
+        // re-attached to a different day on save.
+        if let oldId = existingMealId {
+            let oldPrefix = oldId.uuidString
+            receiptFilenames.removeAll { $0.hasPrefix(oldPrefix) }
+        }
+
+        let existing = viewModel.meals.first {
+            Calendar.current.isDate($0.displayDate, inSameDayAs: date)
+        }
+
+        guard let existing else {
+            existingMealId = nil
+            if !initial {
+                breakfast = ""
+                lunch = ""
+                dinner = ""
+            }
+            return
+        }
+
+        existingMealId = existing.id
+
+        // Show the day's already-attached receipts alongside any new one.
+        for f in LocalStorageService.shared.receiptFilenames(for: existing.id) where !receiptFilenames.contains(f) {
+            receiptFilenames.append(f)
+        }
+        if selectedAgencyId == nil { selectedAgencyId = existing.agencyId }
+        if businessPurpose.isEmpty { businessPurpose = existing.businessPurpose ?? "" }
+
+        if initial, let slot = prefillData?.mealSlot {
+            // Scanner merge: fill the non-scanned slots from the existing entry,
+            // then merge the scanned amount into the chosen slot. The scanned
+            // slot is always set deterministically (defaulting to Add) so no
+            // amount is ever lost if the conflict prompt is dismissed.
+            let scannedAmt = max(Decimal(string: prefillData?.amount ?? "") ?? 0, 0)
+            if slot != .breakfast { breakfast = fieldString(existing.breakfast) }
+            if slot != .lunch { lunch = fieldString(existing.lunch) }
+            if slot != .dinner { dinner = fieldString(existing.dinner) }
+
+            let existingSlotAmt = amount(existing, slot)
+            setField(slot, existingSlotAmt + scannedAmt) // safe default = Add
+            if existingSlotAmt > 0 && scannedAmt > 0 {
+                conflictSlot = slot
+                conflictExisting = existingSlotAmt
+                conflictScanned = scannedAmt
+                showSlotConflict = true
+            }
+        } else {
+            breakfast = fieldString(existing.breakfast)
+            lunch = fieldString(existing.lunch)
+            dinner = fieldString(existing.dinner)
+        }
+    }
+
+    private func amount(_ meal: Meal, _ slot: ScanPrefillData.MealSlot) -> Decimal {
+        switch slot {
+        case .breakfast: return meal.breakfast
+        case .lunch: return meal.lunch
+        case .dinner: return meal.dinner
+        }
+    }
+
+    private func setField(_ slot: ScanPrefillData.MealSlot, _ value: Decimal) {
+        switch slot {
+        case .breakfast: breakfast = fieldString(value)
+        case .lunch: lunch = fieldString(value)
+        case .dinner: dinner = fieldString(value)
+        }
+    }
+
+    private func fieldString(_ value: Decimal) -> String {
+        value > 0 ? String(format: "%.2f", NSDecimalNumber(decimal: value).doubleValue) : ""
+    }
+
+    private func money(_ value: Decimal) -> String {
+        "$" + String(format: "%.2f", NSDecimalNumber(decimal: value).doubleValue)
     }
 }

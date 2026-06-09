@@ -17,6 +17,10 @@ struct ScannedReceiptReviewView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var showCameraPermissionAlert = false
 
+    // Meal slot chosen right after a meal scan (Breakfast / Lunch / Dinner)
+    @State private var chosenMealSlot: ScanPrefillData.MealSlot?
+    @State private var showSlotChooser = false
+
 
     var body: some View {
         NavigationStack {
@@ -75,6 +79,22 @@ struct ScannedReceiptReviewView: View {
                 guard let userId = authService.currentSession?.user.id else { return }
                 await mealViewModel.loadAll(userId: userId)
                 await expenseViewModel.loadAll(userId: userId)
+            }
+            .confirmationDialog("Which meal is this?", isPresented: $showSlotChooser, titleVisibility: .visible) {
+                Button("Breakfast") { chosenMealSlot = .breakfast }
+                Button("Lunch") { chosenMealSlot = .lunch }
+                Button("Dinner") { chosenMealSlot = .dinner }
+                Button("Cancel", role: .cancel) { chosenMealSlot = .lunch }
+            }
+            .onChange(of: scanVM.state) { _, newState in
+                if newState == .review && scanVM.category == .meal && chosenMealSlot == nil {
+                    showSlotChooser = true
+                }
+            }
+            .onChange(of: scanVM.category) { _, newCategory in
+                if scanVM.state == .review && newCategory == .meal && chosenMealSlot == nil {
+                    showSlotChooser = true
+                }
             }
         }
     }
@@ -183,11 +203,33 @@ struct ScannedReceiptReviewView: View {
 
             // The actual form
             if scanVM.category == .meal {
-                MealLogView(
-                    viewModel: mealViewModel,
-                    prefillData: buildPrefillData(),
-                    onSaveComplete: { _ in dismiss() }
-                )
+                if let slot = chosenMealSlot {
+                    MealLogView(
+                        viewModel: mealViewModel,
+                        prefillData: buildPrefillData(slot: slot),
+                        onSaveComplete: { _ in dismiss() }
+                    )
+                } else {
+                    // Waiting for the user to pick breakfast / lunch / dinner.
+                    VStack(spacing: 12) {
+                        Spacer()
+                        Image(systemName: "fork.knife")
+                            .font(.largeTitle)
+                            .foregroundColor(Color(Constants.Colors.mintTeal))
+                        Text("Which meal is this?")
+                            .font(.headline)
+                        Text("Choose breakfast, lunch, or dinner to continue.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Button("Choose meal") { showSlotChooser = true }
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(Color(Constants.Colors.mintTeal))
+                            .padding(.top, 4)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 IndividualExpenseLogView(
                     viewModel: expenseViewModel,
@@ -200,14 +242,14 @@ struct ScannedReceiptReviewView: View {
 
     // MARK: - Helpers
 
-    private func buildPrefillData() -> ScanPrefillData? {
+    private func buildPrefillData(slot: ScanPrefillData.MealSlot? = nil) -> ScanPrefillData? {
         guard let image = scanVM.capturedImage else { return nil }
         return ScanPrefillData(
             date: scanVM.date,
             amount: scanVM.amount.isEmpty ? nil : scanVM.amount,
             merchantName: scanVM.merchantName.isEmpty ? nil : scanVM.merchantName,
             capturedImage: image,
-            mealSlot: scanVM.category == .meal ? .lunch : nil
+            mealSlot: scanVM.category == .meal ? (slot ?? .lunch) : nil
         )
     }
 
