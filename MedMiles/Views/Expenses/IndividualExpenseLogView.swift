@@ -36,7 +36,7 @@ struct IndividualExpenseLogView: View {
         _date = State(initialValue: prefillData?.date ?? Date())
         _item = State(initialValue: prefillData?.merchantName ?? "")
         _purpose = State(initialValue: "")
-        _category = State(initialValue: "other")
+        _category = State(initialValue: ExpenseCategoryManager.shared.defaultCategoryValue(preferred: "other"))
         _selectedAgencyId = State(initialValue: nil)
         _amount = State(initialValue: prefillData?.amount ?? "")
 
@@ -260,7 +260,7 @@ struct IndividualExpenseLogView: View {
         date = Date()
         item = ""
         purpose = ""
-        category = "other"
+        category = ExpenseCategoryManager.shared.defaultCategoryValue(preferred: "other")
         selectedAgencyId = nil
         amount = ""
         receiptFilenames = []

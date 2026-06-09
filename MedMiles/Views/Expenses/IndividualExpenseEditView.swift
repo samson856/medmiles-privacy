@@ -52,7 +52,7 @@ struct IndividualExpenseEditView: View {
 
                 HStack {
                     Picker("Category", selection: $category) {
-                        ForEach(ExpenseCategoryManager.shared.allCategories, id: \.value) { cat in
+                        ForEach(ExpenseCategoryManager.shared.categoriesIncluding(value: category), id: \.value) { cat in
                             Text(cat.label).tag(cat.value)
                         }
                     }

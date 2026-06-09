@@ -63,7 +63,7 @@ struct AddMiscExpenseSheet: View {
     let onSave: (Date, String, String, String) -> Void
 
     @State private var date = Date()
-    @State private var category = "clinical_supplies"
+    @State private var category = ExpenseCategoryManager.shared.defaultCategoryValue(preferred: "clinical_supplies")
     @State private var description = ""
     @State private var amount = ""
     @State private var showManageCategories = false
@@ -75,7 +75,7 @@ struct AddMiscExpenseSheet: View {
 
                 HStack {
                     Picker("Category", selection: $category) {
-                        ForEach(ExpenseCategoryManager.shared.allCategories, id: \.value) { cat in
+                        ForEach(ExpenseCategoryManager.shared.categoriesIncluding(value: category), id: \.value) { cat in
                             Text(cat.label).tag(cat.value)
                         }
                     }
@@ -167,7 +167,7 @@ struct EditMiscExpenseSheet: View {
 
                 HStack {
                     Picker("Category", selection: $category) {
-                        ForEach(ExpenseCategoryManager.shared.allCategories, id: \.value) { cat in
+                        ForEach(ExpenseCategoryManager.shared.categoriesIncluding(value: category), id: \.value) { cat in
                             Text(cat.label).tag(cat.value)
                         }
                     }
@@ -268,15 +268,33 @@ struct ManageCategoriesSheet: View {
                     }
                 }
 
-                Section(header: Text("Built-in Categories")) {
-                    ForEach(MiscExpense.categories, id: \.value) { cat in
-                        HStack {
+                Section(header: Text("Built-in Categories"), footer: Text("Swipe left to remove any category you don't use.")) {
+                    let builtIns = manager.visibleBuiltInCategories
+                    if builtIns.isEmpty {
+                        Text("All default categories removed")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(builtIns, id: \.value) { cat in
                             Text(cat.label)
                                 .font(.subheadline)
-                            Spacer()
-                            Image(systemName: "lock.fill")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
+                        }
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                manager.removeCategory(value: builtIns[index].value)
+                            }
+                            refreshKey = UUID()
+                        }
+                    }
+
+                    if manager.hasHiddenBuiltIns {
+                        Button {
+                            manager.restoreDefaultCategories()
+                            refreshKey = UUID()
+                        } label: {
+                            Label("Restore default categories", systemImage: "arrow.uturn.backward")
+                                .font(.caption)
+                                .foregroundColor(Color(Constants.Colors.mintTeal))
                         }
                     }
                 }

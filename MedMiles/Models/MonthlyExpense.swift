@@ -181,6 +181,7 @@ struct MiscExpense: Codable, Identifiable {
 final class ExpenseCategoryManager {
     static let shared = ExpenseCategoryManager()
     private let key = "customExpenseCategories"
+    private let hiddenKey = "hiddenBuiltInExpenseCategories"
 
     private init() {}
 
@@ -192,15 +193,53 @@ final class ExpenseCategoryManager {
         return decoded.map { ($0[0], $0[1]) }
     }
 
+    /// Values of built-in categories the user has chosen to hide.
+    var hiddenBuiltInValues: [String] {
+        UserDefaults.standard.stringArray(forKey: hiddenKey) ?? []
+    }
+
+    /// Built-in categories that haven't been hidden by the user.
+    var visibleBuiltInCategories: [(label: String, value: String)] {
+        let hidden = Set(hiddenBuiltInValues)
+        return MiscExpense.categories.filter { !hidden.contains($0.value) }
+    }
+
+    var hasHiddenBuiltIns: Bool { !hiddenBuiltInValues.isEmpty }
+
+    /// All selectable categories: visible built-ins + custom ones.
     var allCategories: [(label: String, value: String)] {
-        MiscExpense.categories + customCategories
+        visibleBuiltInCategories + customCategories
+    }
+
+    /// A safe default selection for a new entry: the preferred value if it's
+    /// still available, otherwise the first available category (so the picker
+    /// never starts on a removed/hidden category).
+    func defaultCategoryValue(preferred: String) -> String {
+        let available = allCategories
+        if available.contains(where: { $0.value == preferred }) { return preferred }
+        return available.first?.value ?? preferred
+    }
+
+    /// All selectable categories, guaranteed to include `value` — used by edit
+    /// screens so an entry whose category was later removed still shows it in
+    /// the picker instead of appearing blank.
+    func categoriesIncluding(value: String) -> [(label: String, value: String)] {
+        var cats = allCategories
+        if !value.isEmpty, !cats.contains(where: { $0.value == value }) {
+            cats.append((label: Self.categoryLabel(for: value), value: value))
+        }
+        return cats
     }
 
     func addCategory(label: String) {
         let value = label.lowercased().replacingOccurrences(of: " ", with: "_")
+        // Re-adding a previously hidden built-in just un-hides it.
+        if MiscExpense.categories.contains(where: { $0.value == value }) {
+            unhideBuiltIn(value: value)
+            return
+        }
         var current = customCategories.map { [$0.label, $0.value] }
         guard !current.contains(where: { $0[1] == value }) else { return }
-        guard !MiscExpense.categories.contains(where: { $0.value == value }) else { return }
         current.append([label, value])
         if let data = try? JSONEncoder().encode(current) {
             UserDefaults.standard.set(data, forKey: key)
@@ -215,11 +254,36 @@ final class ExpenseCategoryManager {
         }
     }
 
+    /// Removes a category whether it is custom (deleted) or built-in (hidden).
+    func removeCategory(value: String) {
+        if isCustom(value: value) {
+            deleteCategory(value: value)
+        } else if MiscExpense.categories.contains(where: { $0.value == value }) {
+            var hidden = hiddenBuiltInValues
+            guard !hidden.contains(value) else { return }
+            hidden.append(value)
+            UserDefaults.standard.set(hidden, forKey: hiddenKey)
+        }
+    }
+
+    private func unhideBuiltIn(value: String) {
+        var hidden = hiddenBuiltInValues
+        hidden.removeAll { $0 == value }
+        UserDefaults.standard.set(hidden, forKey: hiddenKey)
+    }
+
+    /// Restores all hidden built-in categories.
+    func restoreDefaultCategories() {
+        UserDefaults.standard.removeObject(forKey: hiddenKey)
+    }
+
     func isCustom(value: String) -> Bool {
         customCategories.contains { $0.value == value }
     }
 
     static func categoryLabel(for value: String) -> String {
+        // Resolve from the full built-in list (even hidden ones) so existing
+        // expenses always display a correct label.
         if let found = MiscExpense.categories.first(where: { $0.value == value }) {
             return found.label
         }
