@@ -151,6 +151,49 @@ final class ReceiptScannerService {
     // MARK: - Parse Date
 
     private func parseDate(from lines: [String]) -> Date? {
+        // Allow dates up to end of today (+1 day grace for timezone differences)
+        // and back two years (covers current + prior tax year receipts).
+        let calendar = Calendar.current
+        guard let endOfToday = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: Date()),
+              let graceEnd = calendar.date(byAdding: .day, value: 1, to: endOfToday),
+              let twoYearsAgo = calendar.date(byAdding: .year, value: -2, to: Date()) else {
+            return nil
+        }
+        func inWindow(_ d: Date) -> Bool { d >= twoYearsAgo && d <= graceEnd }
+
+        // ── Primary: Apple's NSDataDetector ──
+        // This is the same engine iOS uses to make dates tappable in Mail/Messages.
+        // It recognizes far more real-world receipt date formats (with/without
+        // years, times, ALL-CAPS months, ordinals, etc.) than hand-rolled regex.
+        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue) {
+            // Pass 1: prefer a date sitting on a line that names it (most reliable).
+            // Pass 2: any date anywhere in the receipt, in reading order.
+            let keywordLines = lines.filter { line in
+                let l = line.lowercased()
+                return l.contains("date") || l.contains("sold") || l.contains("trans")
+                    || l.contains("order") || l.contains("invoice") || l.contains("purchased")
+            }
+            for group in [keywordLines, lines] {
+                for line in group {
+                    let nsLine = line as NSString
+                    let range = NSRange(location: 0, length: nsLine.length)
+                    for match in detector.matches(in: line, options: [], range: range) {
+                        guard let d = match.date, inWindow(d) else { continue }
+                        // Reject time-only matches (e.g. "2:32 PM") that resolve to
+                        // today — require the matched text to actually look like a date.
+                        let matched = nsLine.substring(with: match.range)
+                        let looksLikeDate = matched.contains("/") || matched.contains("-")
+                            || matched.contains(".")
+                            || matched.range(of: "[A-Za-z]{3,}", options: .regularExpression) != nil
+                        if looksLikeDate {
+                            return d
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Fallback: explicit regex + DateFormatter passes ──
         let dateFormats = [
             "MM/dd/yyyy", "M/d/yyyy", "MM/dd/yy", "M/d/yy",
             "MM-dd-yyyy", "M-d-yyyy", "MM-dd-yy", "M-d-yy",
@@ -168,13 +211,6 @@ final class ReceiptScannerService {
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-
-        // Allow dates up to end of today (not exact timestamp)
-        let calendar = Calendar.current
-        guard let endOfToday = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: Date()),
-              let twoYearsAgo = calendar.date(byAdding: .year, value: -2, to: Date()) else {
-            return nil
-        }
 
         for line in lines {
             if let match = line.firstMatch(of: datePattern) {
