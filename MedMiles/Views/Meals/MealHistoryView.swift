@@ -30,9 +30,6 @@ struct MealHistoryView: View {
                                 .fontWeight(.bold)
                         }
                         Spacer()
-                        Text("Deductible: $\(NSDecimalNumber(decimal: viewModel.deductibleAmount).doubleValue, specifier: "%.2f")")
-                            .font(.caption)
-                            .foregroundColor(Color(Constants.Colors.successGreen))
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
