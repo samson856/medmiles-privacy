@@ -33,7 +33,6 @@ final class CredentialPDFGenerator {
         let titleFont = UIFont.boldSystemFont(ofSize: 22)
         let subtitleFont = UIFont.systemFont(ofSize: 12, weight: .medium)
         let headingFont = UIFont.boldSystemFont(ofSize: 16)
-        let bodyFont = UIFont.systemFont(ofSize: 11)
         let captionFont = UIFont.systemFont(ofSize: 9, weight: .regular)
 
         let titleColor = UIColor(red: 54/255, green: 54/255, blue: 56/255, alpha: 1) // graphite
@@ -193,73 +192,57 @@ final class CredentialPDFGenerator {
             yPosition += 20
         }
 
-        // -- Each Credential --
+        // -- Credential Documents --
+        // The summary table above is the first-page list of every credential and
+        // its expiration date. The pages below hold the actual scanned documents
+        // (photos and PDFs), each on its own page and labeled so it can be matched
+        // back to the right credential.
         for credential in credentials {
-            let neededHeight: CGFloat = 140 // estimate per credential
-            checkPageBreak(needed: neededHeight)
-
-            // Credential type heading
-            let headingAttrs: [NSAttributedString.Key: Any] = [.font: headingFont, .foregroundColor: titleColor]
-            credential.credentialType.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: headingAttrs)
-            yPosition += 22
-
-            // Status badge
-            let statusColor: UIColor
-            switch credential.status {
-            case "expired": statusColor = UIColor(red: 226/255, green: 75/255, blue: 74/255, alpha: 1)
-            case "expiring_soon": statusColor = UIColor(red: 239/255, green: 159/255, blue: 39/255, alpha: 1)
-            default: statusColor = UIColor(red: 11/255, green: 138/255, blue: 110/255, alpha: 1)
-            }
-            let statusAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont, .foregroundColor: statusColor]
-            let statusText = "Status: \(credential.statusLabel)"
-            statusText.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: statusAttrs)
-            yPosition += 16
-
-            let detailAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont, .foregroundColor: UIColor.darkGray]
-
-            // Issuing body
-            if let issuer = credential.issuingBody, !issuer.isEmpty {
-                let text = "Issuing Body: \(issuer)"
-                text.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: detailAttrs)
-                yPosition += 16
-            }
-
-            // Issue date
-            if let issueDate = credential.displayIssueDate {
-                let text = "Issue Date: \(dateFormatter.string(from: issueDate))"
-                text.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: detailAttrs)
-                yPosition += 16
-            }
-
-            // Expiration date
-            if let expDate = credential.displayExpirationDate {
-                let text = "Expiration Date: \(dateFormatter.string(from: expDate))"
-                text.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: detailAttrs)
-                yPosition += 16
-            }
-
-            // Attached document images and PDFs
             let docFiles = LocalStorageService.shared.receiptFilenames(for: credential.id)
+            guard !docFiles.isEmpty else { continue }
+
+            // Expiration label reused on each of this credential's document pages
+            let expLabel: String
+            if let expDate = credential.displayExpirationDate {
+                expLabel = "Expires: \(dateFormatter.string(from: expDate))"
+            } else {
+                expLabel = "No Expiration"
+            }
+
+            let docHeadingAttrs: [NSAttributedString.Key: Any] = [.font: headingFont, .foregroundColor: titleColor]
+            let docSubAttrs: [NSAttributedString.Key: Any] = [.font: subtitleFont, .foregroundColor: tealColor]
+
+            // Draws the credential label (type + issuer + expiration) at the top of
+            // a freshly started document page and advances yPosition below it.
+            func drawDocumentLabel(extra: String?) {
+                credential.credentialType.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: docHeadingAttrs)
+                yPosition += 22
+                var sub = expLabel
+                if let issuer = credential.issuingBody, !issuer.isEmpty {
+                    sub = "\(issuer)  •  \(expLabel)"
+                }
+                if let extra = extra {
+                    sub += "  •  \(extra)"
+                }
+                sub.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: docSubAttrs)
+                yPosition += 24
+            }
+
             for filename in docFiles {
                 if filename.lowercased().hasSuffix(".pdf") {
-                    // Render each page of the attached PDF into the credential package
+                    // Render each page of the attached PDF, one document page each
                     let fileURL = LocalStorageService.shared.receiptURL(filename: filename)
                     if let pdfDoc = CGPDFDocument(fileURL as CFURL) {
                         let pageCount = pdfDoc.numberOfPages
                         for pageIndex in 1...pageCount {
                             guard let pdfPage = pdfDoc.page(at: pageIndex) else { continue }
                             startNewPage()
+                            drawDocumentLabel(extra: pageCount > 1 ? "Page \(pageIndex) of \(pageCount)" : nil)
 
-                            // Label at top of each embedded PDF page
-                            let label = "\(credential.credentialType) — Document \(pageIndex) of \(pageCount)"
-                            let labelAttrs: [NSAttributedString.Key: Any] = [.font: captionFont, .foregroundColor: grayColor]
-                            label.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: labelAttrs)
-                            yPosition += 16
-
-                            // Calculate how to fit the PDF page in the available area
+                            // Fit the PDF page into the remaining area
                             let pdfRect = pdfPage.getBoxRect(.mediaBox)
                             let availableWidth = contentWidth
-                            let availableHeight = pageHeight - yPosition - margin - 20
+                            let availableHeight = pageHeight - yPosition - margin - 10
                             let scale = min(availableWidth / pdfRect.width, availableHeight / pdfRect.height, 1.0)
                             let scaledWidth = pdfRect.width * scale
                             let scaledHeight = pdfRect.height * scale
@@ -280,10 +263,12 @@ final class CredentialPDFGenerator {
                         }
                     }
                 } else if let image = LocalStorageService.shared.loadReceipt(filename: filename) {
-                    // Render attached image
-                    yPosition += 8
+                    // Render the scan/photo on its own page
+                    startNewPage()
+                    drawDocumentLabel(extra: nil)
+
                     let maxImgWidth: CGFloat = contentWidth
-                    let maxImgHeight: CGFloat = 500
+                    let maxImgHeight: CGFloat = pageHeight - yPosition - margin - 10
                     let imgAspect = image.size.width / image.size.height
                     var imgWidth = maxImgWidth
                     var imgHeight = imgWidth / imgAspect
@@ -292,22 +277,13 @@ final class CredentialPDFGenerator {
                         imgWidth = imgHeight * imgAspect
                     }
 
-                    checkPageBreak(needed: imgHeight + 10)
-
-                    let imgRect = CGRect(x: margin, y: yPosition, width: imgWidth, height: imgHeight)
+                    // Center horizontally
+                    let xImg = margin + (maxImgWidth - imgWidth) / 2
+                    let imgRect = CGRect(x: xImg, y: yPosition, width: imgWidth, height: imgHeight)
                     image.draw(in: imgRect)
                     yPosition += imgHeight + 8
                 }
             }
-
-            // Divider
-            yPosition += 8
-            context?.setStrokeColor(UIColor.lightGray.cgColor)
-            context?.setLineWidth(0.5)
-            context?.move(to: CGPoint(x: margin, y: yPosition))
-            context?.addLine(to: CGPoint(x: pageWidth - margin, y: yPosition))
-            context?.strokePath()
-            yPosition += 15
         }
 
         // Footer on last page with small logo
