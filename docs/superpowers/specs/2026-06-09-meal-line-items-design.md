@@ -1,7 +1,7 @@
 # Meal Line-Items — Design
 
 - **Date:** 2026-06-09
-- **Status:** Design approved; pending implementation
+- **Status:** Implemented (2026-06-09)
 - **Builds on:** `2026-06-09-meal-day-consolidation-design.md` (one entry per day)
 
 ## Problem
