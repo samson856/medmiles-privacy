@@ -89,14 +89,20 @@ struct ManageAgenciesSheet: View {
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(agencies) { agency in
-                        Text(agency.name)
-                            .font(.subheadline)
-                    }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            let id = agencies[index].id
-                            onDelete(id)
-                            agencies.removeAll { $0.id == id }
+                        HStack {
+                            Text(agency.name)
+                                .font(.subheadline)
+                            Spacer()
+                            Button(role: .destructive) {
+                                let id = agency.id
+                                onDelete(id)
+                                agencies.removeAll { $0.id == id }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundColor(Color(Constants.Colors.errorRed))
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Delete \(agency.name)")
                         }
                     }
                 }

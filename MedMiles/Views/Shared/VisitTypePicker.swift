@@ -89,14 +89,20 @@ struct ManageVisitTypesSheet: View {
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(visitTypes) { vt in
-                        Text(vt.name)
-                            .font(.subheadline)
-                    }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            let id = visitTypes[index].id
-                            onDelete(id)
-                            visitTypes.removeAll { $0.id == id }
+                        HStack {
+                            Text(vt.name)
+                                .font(.subheadline)
+                            Spacer()
+                            Button(role: .destructive) {
+                                let id = vt.id
+                                onDelete(id)
+                                visitTypes.removeAll { $0.id == id }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundColor(Color(Constants.Colors.errorRed))
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Delete \(vt.name)")
                         }
                     }
                 }

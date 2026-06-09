@@ -268,7 +268,7 @@ struct ManageCategoriesSheet: View {
                     }
                 }
 
-                Section(header: Text("Built-in Categories"), footer: Text("Swipe left to remove any category you don't use.")) {
+                Section(header: Text("Built-in Categories"), footer: Text("Tap the trash icon to remove any category you don't use.")) {
                     let builtIns = manager.visibleBuiltInCategories
                     if builtIns.isEmpty {
                         Text("All default categories removed")
@@ -276,14 +276,20 @@ struct ManageCategoriesSheet: View {
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(builtIns, id: \.value) { cat in
-                            Text(cat.label)
-                                .font(.subheadline)
-                        }
-                        .onDelete { indexSet in
-                            for index in indexSet {
-                                manager.removeCategory(value: builtIns[index].value)
+                            HStack {
+                                Text(cat.label)
+                                    .font(.subheadline)
+                                Spacer()
+                                Button(role: .destructive) {
+                                    manager.removeCategory(value: cat.value)
+                                    refreshKey = UUID()
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(Color(Constants.Colors.errorRed))
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Delete \(cat.label)")
                             }
-                            refreshKey = UUID()
                         }
                     }
 
@@ -307,14 +313,20 @@ struct ManageCategoriesSheet: View {
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(custom, id: \.value) { cat in
-                            Text(cat.label)
-                                .font(.subheadline)
-                        }
-                        .onDelete { indexSet in
-                            for index in indexSet {
-                                manager.deleteCategory(value: custom[index].value)
+                            HStack {
+                                Text(cat.label)
+                                    .font(.subheadline)
+                                Spacer()
+                                Button(role: .destructive) {
+                                    manager.deleteCategory(value: cat.value)
+                                    refreshKey = UUID()
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(Color(Constants.Colors.errorRed))
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Delete \(cat.label)")
                             }
-                            refreshKey = UUID()
                         }
                     }
                 }
