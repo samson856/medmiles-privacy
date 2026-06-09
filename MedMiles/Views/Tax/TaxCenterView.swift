@@ -520,6 +520,7 @@ struct AddTaxPaymentSheet: View {
                             .foregroundColor(.secondary)
                     }
                     .accessibilityLabel("Dismiss keyboard")
+                    Spacer()
                 }
             }
         }

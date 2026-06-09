@@ -230,6 +230,7 @@ struct IncomeLogView: View {
                         .foregroundColor(.secondary)
                 }
                 .accessibilityLabel("Dismiss keyboard")
+                Spacer()
             }
         }
         .overlay {

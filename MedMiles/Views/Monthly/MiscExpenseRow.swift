@@ -131,6 +131,7 @@ struct AddMiscExpenseSheet: View {
                             .foregroundColor(.secondary)
                     }
                     .accessibilityLabel("Dismiss keyboard")
+                    Spacer()
                 }
             }
             .sheet(isPresented: $showManageCategories) {
@@ -228,6 +229,7 @@ struct EditMiscExpenseSheet: View {
                             .foregroundColor(.secondary)
                     }
                     .accessibilityLabel("Dismiss keyboard")
+                    Spacer()
                 }
             }
             .sheet(isPresented: $showManageCategories) {

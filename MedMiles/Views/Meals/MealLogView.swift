@@ -198,6 +198,7 @@ struct MealLogView: View {
                         .foregroundColor(.secondary)
                 }
                 .accessibilityLabel("Dismiss keyboard")
+                Spacer()
             }
         }
         .confirmationDialog("Which meal is this receipt for?", isPresented: $showMealSlotPicker) {

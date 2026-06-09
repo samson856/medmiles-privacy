@@ -177,6 +177,7 @@ struct IndividualExpenseLogView: View {
                         .foregroundColor(.secondary)
                 }
                 .accessibilityLabel("Dismiss keyboard")
+                Spacer()
             }
         }
         .alert("Expense Limit Reached", isPresented: $showUpgradePrompt) {

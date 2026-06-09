@@ -281,6 +281,7 @@ struct TripLogView: View {
                         .foregroundColor(.secondary)
                 }
                 .accessibilityLabel("Dismiss keyboard")
+                Spacer()
             }
         }
         .background(Color(Constants.Colors.background).ignoresSafeArea())

@@ -149,6 +149,7 @@ struct MonthlyTrackerView: View {
                                 .foregroundColor(.secondary)
                         }
                         .accessibilityLabel("Dismiss keyboard")
+                        Spacer()
                     }
                 }
             }
