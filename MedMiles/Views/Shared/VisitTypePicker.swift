@@ -8,6 +8,7 @@ struct VisitTypePicker: View {
 
     @State private var showAddSheet = false
     @State private var showManageSheet = false
+    @State private var manageVisitTypes: [VisitType] = []
 
     private var selectedName: String {
         guard let id = selectedVisitTypeId else { return "Select visit type" }
@@ -59,18 +60,23 @@ struct VisitTypePicker: View {
             }
         }
         .sheet(isPresented: $showManageSheet) {
-            ManageVisitTypesSheet(visitTypes: visitTypes, onDelete: { id in
+            ManageVisitTypesSheet(visitTypes: $manageVisitTypes, onDelete: { id in
                 if selectedVisitTypeId == id {
                     selectedVisitTypeId = nil
                 }
                 onDelete?(id)
             })
         }
+        .onChange(of: showManageSheet) { _, isPresented in
+            if isPresented {
+                manageVisitTypes = visitTypes
+            }
+        }
     }
 }
 
 struct ManageVisitTypesSheet: View {
-    let visitTypes: [VisitType]
+    @Binding var visitTypes: [VisitType]
     let onDelete: (UUID) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -88,7 +94,9 @@ struct ManageVisitTypesSheet: View {
                     }
                     .onDelete { indexSet in
                         for index in indexSet {
-                            onDelete(visitTypes[index].id)
+                            let id = visitTypes[index].id
+                            onDelete(id)
+                            visitTypes.removeAll { $0.id == id }
                         }
                     }
                 }
