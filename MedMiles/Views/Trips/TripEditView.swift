@@ -250,6 +250,7 @@ struct TripEditView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .dismissKeyboardButton()
         .navigationTitle("Edit Trip")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Delete this trip?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {

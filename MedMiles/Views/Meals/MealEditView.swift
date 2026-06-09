@@ -160,6 +160,7 @@ struct MealEditView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .dismissKeyboardButton()
         .navigationTitle("Edit Meal")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Delete this meal entry?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {

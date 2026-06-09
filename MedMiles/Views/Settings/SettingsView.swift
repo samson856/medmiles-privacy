@@ -277,6 +277,7 @@ struct SettingsView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .dismissKeyboardButton()
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Sign out of MedMiles?", isPresented: $showSignOutConfirmation, titleVisibility: .visible) {

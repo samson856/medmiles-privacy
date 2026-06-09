@@ -164,6 +164,7 @@ struct IndividualExpenseEditView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .dismissKeyboardButton()
         .navigationTitle("Edit Expense")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showManageCategories) {

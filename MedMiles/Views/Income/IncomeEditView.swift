@@ -250,6 +250,7 @@ struct IncomeEditView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .dismissKeyboardButton()
         .navigationTitle("Edit Income")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Delete this income entry?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {

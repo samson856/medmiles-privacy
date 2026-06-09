@@ -177,6 +177,7 @@ struct HomeOfficeSetupView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .dismissKeyboardButton()
         .navigationTitle("Home Office")
         .navigationBarTitleDisplayMode(.inline)
         .task {

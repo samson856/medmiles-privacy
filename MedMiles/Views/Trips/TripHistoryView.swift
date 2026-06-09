@@ -155,6 +155,7 @@ struct TripHistoryView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .dismissKeyboardButton()
         .searchable(text: $searchText, prompt: "Search trips")
         .refreshable {
             guard let userId = authService.currentSession?.user.id else { return }
