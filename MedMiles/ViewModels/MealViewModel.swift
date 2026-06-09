@@ -42,32 +42,46 @@ final class MealViewModel: ObservableObject {
 
     // MARK: - Save Meal
 
-    func saveMeal(userId: UUID, date: Date, breakfast: String, lunch: String,
-                  dinner: String, agencyId: UUID?, receiptNumber: String,
-                  notes: String) async -> UUID? {
+    /// Writes the line items plus the synced per-type sums + day total so the
+    /// dashboard, tax center, and exports keep working off the scalar columns.
+    private func applyItems(_ items: [MealItem], to data: inout [String: AnyJSON]) {
+        func sum(_ type: MealItemType) -> Double {
+            NSDecimalNumber(decimal: items.filter { $0.type == type }.reduce(0) { $0 + $1.amount }).doubleValue
+        }
+        let b = sum(.breakfast), l = sum(.lunch), d = sum(.dinner)
+        data["breakfast"] = .double(b)
+        data["lunch"] = .double(l)
+        data["dinner"] = .double(d)
+        data["day_total"] = .double(b + l + d)
+        data["line_items"] = .array(items.map { item in
+            .object([
+                "id": .string(item.id.uuidString),
+                "type": .string(item.type.rawValue),
+                "amount": .double(NSDecimalNumber(decimal: item.amount).doubleValue),
+            ])
+        })
+    }
+
+    func saveMeal(userId: UUID, date: Date, items: [MealItem], agencyId: UUID?,
+                  receiptNumber: String, notes: String) async -> UUID? {
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
 
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withFullDate]
-
-        let b = max(Decimal(string: breakfast) ?? 0, 0)
-        let l = max(Decimal(string: lunch) ?? 0, 0)
-        let d = max(Decimal(string: dinner) ?? 0, 0)
-
-        if b == 0 && l == 0 && d == 0 {
+        let cleaned = items.filter { $0.amount > 0 }
+        if cleaned.isEmpty {
             errorMessage = "Please enter at least one meal amount"
             return nil
         }
 
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.formatOptions = [.withFullDate]
+
         var data: [String: AnyJSON] = [
             "user_id": .string(userId.uuidString),
             "date": .string(dateFormatter.string(from: date)),
-            "breakfast": .double(NSDecimalNumber(decimal: b).doubleValue),
-            "lunch": .double(NSDecimalNumber(decimal: l).doubleValue),
-            "dinner": .double(NSDecimalNumber(decimal: d).doubleValue),
         ]
+        applyItems(cleaned, to: &data)
 
         if let aid = agencyId { data["agency_id"] = .string(aid.uuidString) }
         if !receiptNumber.isEmpty { data["receipt_number"] = .string(receiptNumber) }
@@ -90,27 +104,22 @@ final class MealViewModel: ObservableObject {
 
     // MARK: - Update Meal
 
-    func updateMeal(mealId: UUID, userId: UUID, date: Date, breakfast: String,
-                    lunch: String, dinner: String, agencyId: UUID?,
-                    receiptNumber: String, notes: String) async -> Bool {
+    func updateMeal(mealId: UUID, userId: UUID, date: Date, items: [MealItem],
+                    agencyId: UUID?, receiptNumber: String, notes: String) async -> Bool {
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
 
+        let cleaned = items.filter { $0.amount > 0 }
+
         let dateFormatter = ISO8601DateFormatter()
         dateFormatter.formatOptions = [.withFullDate]
 
-        let b = max(Decimal(string: breakfast) ?? 0, 0)
-        let l = max(Decimal(string: lunch) ?? 0, 0)
-        let d = max(Decimal(string: dinner) ?? 0, 0)
-
         var data: [String: AnyJSON] = [
             "date": .string(dateFormatter.string(from: date)),
-            "breakfast": .double(NSDecimalNumber(decimal: b).doubleValue),
-            "lunch": .double(NSDecimalNumber(decimal: l).doubleValue),
-            "dinner": .double(NSDecimalNumber(decimal: d).doubleValue),
             "updated_at": .string(ISO8601DateFormatter().string(from: Date())),
         ]
+        applyItems(cleaned, to: &data)
 
         data["agency_id"] = agencyId.map { .string($0.uuidString) } ?? .null
         data["receipt_number"] = receiptNumber.isEmpty ? .null : .string(receiptNumber)

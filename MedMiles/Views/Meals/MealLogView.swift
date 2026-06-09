@@ -10,9 +10,11 @@ struct MealLogView: View {
     let onSaveComplete: ((UUID) -> Void)?
 
     @State private var date: Date
+    // Quick rows = the first item of each type. Extras = additional same-type items.
     @State private var breakfast: String
     @State private var lunch: String
     @State private var dinner: String
+    @State private var extras: [EditableMealItem]
     @State private var selectedAgencyId: UUID?
     @State private var receiptNumber: String
     @State private var businessPurpose: String
@@ -27,12 +29,8 @@ struct MealLogView: View {
     @State private var isScanning = false
     @State private var autoSaveMessage: String?
 
-    // Day-editor / merge state (one meal entry per day)
+    // Day-editor state (one meal entry per day)
     @State private var existingMealId: UUID?
-    @State private var showSlotConflict = false
-    @State private var conflictSlot: ScanPrefillData.MealSlot?
-    @State private var conflictExisting: Decimal = 0
-    @State private var conflictScanned: Decimal = 0
     @State private var didInitialLoad = false
 
     init(viewModel: MealViewModel,
@@ -46,16 +44,10 @@ struct MealLogView: View {
         _selectedAgencyId = State(initialValue: nil)
         _receiptNumber = State(initialValue: "")
         _businessPurpose = State(initialValue: prefillData?.merchantName ?? "")
-
-        // Put amount into the correct meal slot
-        let amt = prefillData?.amount ?? ""
-        let slot = prefillData?.mealSlot ?? .lunch
-        _breakfast = State(initialValue: slot == .breakfast ? amt : "")
-        _lunch = State(initialValue: slot == .lunch ? amt : "")
-        _dinner = State(initialValue: slot == .dinner ? amt : "")
-
-        // The scanned receipt image is saved once in `.task` (not here) so it
-        // can't be re-saved if SwiftUI re-initializes the view on a re-render.
+        _breakfast = State(initialValue: "")
+        _lunch = State(initialValue: "")
+        _dinner = State(initialValue: "")
+        _extras = State(initialValue: [])
         _receiptFilenames = State(initialValue: [])
         _pendingImages = State(initialValue: [])
     }
@@ -63,10 +55,7 @@ struct MealLogView: View {
     private var isInScannerMode: Bool { prefillData != nil }
 
     private var dayTotal: Decimal {
-        let b = Decimal(string: breakfast) ?? 0
-        let l = Decimal(string: lunch) ?? 0
-        let d = Decimal(string: dinner) ?? 0
-        return b + l + d
+        collectItems().reduce(0) { $0 + $1.amount }
     }
 
     var body: some View {
@@ -79,38 +68,44 @@ struct MealLogView: View {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle.fill")
                         .foregroundColor(Color(Constants.Colors.mintTeal))
-                    Text("MedMiles keeps one meal entry per day. Double-check each amount is under the right meal (breakfast, lunch, or dinner).")
+                    Text("MedMiles keeps one meal entry per day. Each scanned receipt is added as its own line — double-check it's the right meal (breakfast, lunch, or dinner).")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
 
             Section(header: Text("Meals")) {
-                HStack {
-                    Text("Breakfast")
-                    Spacer()
-                    TextField("$0.00", text: $breakfast)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                mealRow("Breakfast", text: $breakfast)
+                mealRow("Lunch", text: $lunch)
+                mealRow("Dinner", text: $dinner)
+
+                ForEach($extras) { $extra in
+                    HStack {
+                        Text(extra.type.label)
+                        Spacer()
+                        TextField("$0.00", text: $extra.amount)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Button(role: .destructive) {
+                            extras.removeAll { $0.id == extra.id }
+                        } label: {
+                            Image(systemName: "trash")
+                                .foregroundColor(Color(Constants.Colors.errorRed))
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Remove \(extra.type.label)")
+                    }
                 }
 
-                HStack {
-                    Text("Lunch")
-                    Spacer()
-                    TextField("$0.00", text: $lunch)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
-                }
-
-                HStack {
-                    Text("Dinner")
-                    Spacer()
-                    TextField("$0.00", text: $dinner)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                Menu {
+                    Button("Breakfast") { addExtra(.breakfast) }
+                    Button("Lunch") { addExtra(.lunch) }
+                    Button("Dinner") { addExtra(.dinner) }
+                } label: {
+                    Label("Add another meal", systemImage: "plus.circle.fill")
+                        .font(.subheadline)
+                        .foregroundColor(Color(Constants.Colors.mintTeal))
                 }
 
                 HStack {
@@ -123,7 +118,7 @@ struct MealLogView: View {
                 }
             }
 
-                Section(header: Text("Details")) {
+            Section(header: Text("Details")) {
                 AgencyPicker(
                     selectedAgencyId: $selectedAgencyId,
                     agencies: viewModel.agencies,
@@ -239,16 +234,6 @@ struct MealLogView: View {
         .onChange(of: date) { _, _ in
             loadExistingDay(initial: false)
         }
-        .alert("\(conflictSlot?.rawValue ?? "Meal") already logged", isPresented: $showSlotConflict, presenting: conflictSlot) { slot in
-            Button("Add (\(money(conflictExisting + conflictScanned)))") {
-                setField(slot, conflictExisting + conflictScanned)
-            }
-            Button("Replace (\(money(conflictScanned)))") {
-                setField(slot, conflictScanned)
-            }
-        } message: { slot in
-            Text("\(slot.rawValue) already has \(money(conflictExisting)) for this day. Add the new \(money(conflictScanned)) to it, or replace it?")
-        }
         .overlay {
             if isScanning {
                 VStack(spacing: 12) {
@@ -294,6 +279,21 @@ struct MealLogView: View {
         }
     }
 
+    private func mealRow(_ label: String, text: Binding<String>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            TextField("$0.00", text: text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 80)
+        }
+    }
+
+    private func addExtra(_ type: MealItemType) {
+        extras.append(EditableMealItem(type: type, amount: ""))
+    }
+
     // MARK: - Smart Scan
 
     private func scanAndAddReceipt(_ image: UIImage) {
@@ -321,8 +321,8 @@ struct MealLogView: View {
         let isSameDay = Calendar.current.isDate(scannedDate, inSameDayAs: date)
 
         if isSameDay {
-            // Add amount to the selected slot on the current form
-            addAmountToSlot(slot, amount: scannedAmount)
+            // Add the scanned amount as its own new line item.
+            addMealAmount(itemType(from: slot), amount: scannedAmount)
 
             // Attach the receipt image
             let tempId = UUID()
@@ -331,7 +331,7 @@ struct MealLogView: View {
             }
             pendingImages.append(image)
         } else {
-            // Different day — auto-save a new meal entry
+            // Different day — auto-save into that day's entry
             autoSaveNewMeal(date: scannedDate, slot: slot, amount: scannedAmount, image: image)
         }
 
@@ -350,45 +350,32 @@ struct MealLogView: View {
         pendingScanResult = nil
     }
 
-    private func addAmountToSlot(_ slot: ScanPrefillData.MealSlot, amount: String) {
-        guard !amount.isEmpty, let newVal = Decimal(string: amount) else { return }
-
-        switch slot {
-        case .breakfast:
-            let existing = Decimal(string: breakfast) ?? 0
-            breakfast = formatDecimal(existing + newVal)
-        case .lunch:
-            let existing = Decimal(string: lunch) ?? 0
-            lunch = formatDecimal(existing + newVal)
-        case .dinner:
-            let existing = Decimal(string: dinner) ?? 0
-            dinner = formatDecimal(existing + newVal)
-        }
-    }
-
-    private func formatDecimal(_ value: Decimal) -> String {
-        String(format: "%.2f", NSDecimalNumber(decimal: value).doubleValue)
+    /// Adds a new meal amount to the form as its own line item (quick row if
+    /// that type is still empty, otherwise an extra row).
+    private func addMealAmount(_ type: MealItemType, amount: String) {
+        guard let amt = Decimal(string: amount), amt > 0 else { return }
+        var all = collectItems()
+        all.append(MealItem(type: type, amount: amt))
+        distribute(all)
     }
 
     private func autoSaveNewMeal(date saveDate: Date, slot: ScanPrefillData.MealSlot, amount: String, image: UIImage) {
         guard let userId = authService.currentSession?.user.id else { return }
-        let newAmt = max(Decimal(string: amount) ?? 0, 0)
+        guard let newAmt = Decimal(string: amount), newAmt > 0 else { return }
+        let newItem = MealItem(type: itemType(from: slot), amount: newAmt)
 
         Task {
-            // One entry per day: if that day already has a meal, merge into it.
+            // One entry per day: merge into that day's entry if it exists.
             if let existing = viewModel.meals.first(where: {
                 Calendar.current.isDate($0.displayDate, inSameDayAs: saveDate)
             }) {
-                let b = existing.breakfast + (slot == .breakfast ? newAmt : 0)
-                let l = existing.lunch + (slot == .lunch ? newAmt : 0)
-                let d = existing.dinner + (slot == .dinner ? newAmt : 0)
+                var items = existing.items
+                items.append(newItem)
                 let ok = await viewModel.updateMeal(
                     mealId: existing.id,
                     userId: userId,
                     date: saveDate,
-                    breakfast: fieldString(b),
-                    lunch: fieldString(l),
-                    dinner: fieldString(d),
+                    items: items,
                     agencyId: existing.agencyId,
                     receiptNumber: existing.receiptNumber ?? "",
                     notes: existing.businessPurpose ?? (pendingScanResult?.merchantName ?? "")
@@ -398,9 +385,7 @@ struct MealLogView: View {
                 let mealId = await viewModel.saveMeal(
                     userId: userId,
                     date: saveDate,
-                    breakfast: slot == .breakfast ? amount : "",
-                    lunch: slot == .lunch ? amount : "",
-                    dinner: slot == .dinner ? amount : "",
+                    items: [newItem],
                     agencyId: nil,
                     receiptNumber: "",
                     notes: pendingScanResult?.merchantName ?? ""
@@ -421,18 +406,15 @@ struct MealLogView: View {
 
     private func saveMeal() {
         guard let userId = authService.currentSession?.user.id else { return }
+        let items = collectItems()
         Task {
-            // One entry per day: update the existing entry if this day already has
-            // one, otherwise insert a new one.
             let savedId: UUID?
             if let existingId = existingMealId {
                 let ok = await viewModel.updateMeal(
                     mealId: existingId,
                     userId: userId,
                     date: date,
-                    breakfast: breakfast,
-                    lunch: lunch,
-                    dinner: dinner,
+                    items: items,
                     agencyId: selectedAgencyId,
                     receiptNumber: receiptNumber,
                     notes: businessPurpose
@@ -442,9 +424,7 @@ struct MealLogView: View {
                 savedId = await viewModel.saveMeal(
                     userId: userId,
                     date: date,
-                    breakfast: breakfast,
-                    lunch: lunch,
-                    dinner: dinner,
+                    items: items,
                     agencyId: selectedAgencyId,
                     receiptNumber: receiptNumber,
                     notes: businessPurpose
@@ -453,8 +433,8 @@ struct MealLogView: View {
 
             guard let mealId = savedId else { return }
             reassociateReceipts(to: mealId)
-            // The form now represents the saved day's single entry, so any
-            // further save updates it instead of inserting a duplicate.
+            // The form now represents the saved day's single entry, so a further
+            // save updates it instead of inserting a duplicate.
             existingMealId = mealId
             receiptFilenames = LocalStorageService.shared.receiptFilenames(for: mealId)
             onSaveComplete?(mealId)
@@ -465,8 +445,8 @@ struct MealLogView: View {
         }
     }
 
-    /// Re-saves any receipt files that aren't yet under `mealId` (e.g. freshly
-    /// scanned ones stored under a temp id), and leaves already-associated ones.
+    /// Re-saves any receipt files not yet under `mealId` (freshly scanned ones
+    /// stored under a temp id) and leaves already-associated ones.
     private func reassociateReceipts(to mealId: UUID) {
         let prefix = mealId.uuidString
         for oldFilename in receiptFilenames where !oldFilename.hasPrefix(prefix) {
@@ -484,11 +464,11 @@ struct MealLogView: View {
         }
     }
 
-    // MARK: - Day Editor (one entry per day)
+    // MARK: - Day Editor (one entry per day, line items)
 
     /// Loads the meal entry for the current `date` (if any) so the form always
-    /// represents that single day. In scanner mode it merges the scanned amount
-    /// into the chosen slot, prompting on a conflict.
+    /// represents that single day. In scanner mode it appends the scanned amount
+    /// as a new line item.
     private func loadExistingDay(initial: Bool) {
         // Drop receipts loaded from a previously-shown day so they aren't
         // re-attached to a different day on save.
@@ -500,72 +480,77 @@ struct MealLogView: View {
         let existing = viewModel.meals.first {
             Calendar.current.isDate($0.displayDate, inSameDayAs: date)
         }
+        existingMealId = existing?.id
 
-        guard let existing else {
-            existingMealId = nil
-            if !initial {
-                breakfast = ""
-                lunch = ""
-                dinner = ""
-            }
+        if existing == nil && !initial {
+            // Switched to a day with no entry.
+            distribute([])
             return
         }
 
-        existingMealId = existing.id
-
-        // Show the day's already-attached receipts alongside any new one.
-        for f in LocalStorageService.shared.receiptFilenames(for: existing.id) where !receiptFilenames.contains(f) {
-            receiptFilenames.append(f)
-        }
-        if selectedAgencyId == nil { selectedAgencyId = existing.agencyId }
-        if businessPurpose.isEmpty { businessPurpose = existing.businessPurpose ?? "" }
-
-        if initial, let slot = prefillData?.mealSlot {
-            // Scanner merge: fill the non-scanned slots from the existing entry,
-            // then merge the scanned amount into the chosen slot. The scanned
-            // slot is always set deterministically (defaulting to Add) so no
-            // amount is ever lost if the conflict prompt is dismissed.
-            let scannedAmt = max(Decimal(string: prefillData?.amount ?? "") ?? 0, 0)
-            if slot != .breakfast { breakfast = fieldString(existing.breakfast) }
-            if slot != .lunch { lunch = fieldString(existing.lunch) }
-            if slot != .dinner { dinner = fieldString(existing.dinner) }
-
-            let existingSlotAmt = amount(existing, slot)
-            setField(slot, existingSlotAmt + scannedAmt) // safe default = Add
-            if existingSlotAmt > 0 && scannedAmt > 0 {
-                conflictSlot = slot
-                conflictExisting = existingSlotAmt
-                conflictScanned = scannedAmt
-                showSlotConflict = true
+        if let existing {
+            for f in LocalStorageService.shared.receiptFilenames(for: existing.id) where !receiptFilenames.contains(f) {
+                receiptFilenames.append(f)
             }
-        } else {
-            breakfast = fieldString(existing.breakfast)
-            lunch = fieldString(existing.lunch)
-            dinner = fieldString(existing.dinner)
+            if selectedAgencyId == nil { selectedAgencyId = existing.agencyId }
+            if businessPurpose.isEmpty { businessPurpose = existing.businessPurpose ?? "" }
+        }
+
+        var merged = existing?.items ?? []
+        if initial, let slot = prefillData?.mealSlot {
+            let scannedAmt = max(Decimal(string: prefillData?.amount ?? "") ?? 0, 0)
+            if scannedAmt > 0 {
+                merged.append(MealItem(type: itemType(from: slot), amount: scannedAmt))
+            }
+        }
+        distribute(merged)
+    }
+
+    /// Spreads a list of items into the quick rows (first of each type) and the
+    /// extra rows (everything else).
+    private func distribute(_ items: [MealItem]) {
+        breakfast = ""
+        lunch = ""
+        dinner = ""
+        extras = []
+        var seen: Set<MealItemType> = []
+        for item in items {
+            if seen.contains(item.type) {
+                extras.append(EditableMealItem(id: item.id, type: item.type, amount: formatString(item.amount)))
+            } else {
+                seen.insert(item.type)
+                switch item.type {
+                case .breakfast: breakfast = formatString(item.amount)
+                case .lunch: lunch = formatString(item.amount)
+                case .dinner: dinner = formatString(item.amount)
+                }
+            }
         }
     }
 
-    private func amount(_ meal: Meal, _ slot: ScanPrefillData.MealSlot) -> Decimal {
+    /// Builds the line-item list from the quick rows + extras.
+    private func collectItems() -> [MealItem] {
+        var result: [MealItem] = []
+        if let b = Decimal(string: breakfast), b > 0 { result.append(MealItem(type: .breakfast, amount: b)) }
+        if let l = Decimal(string: lunch), l > 0 { result.append(MealItem(type: .lunch, amount: l)) }
+        if let d = Decimal(string: dinner), d > 0 { result.append(MealItem(type: .dinner, amount: d)) }
+        for extra in extras {
+            if let a = Decimal(string: extra.amount), a > 0 {
+                result.append(MealItem(id: extra.id, type: extra.type, amount: a))
+            }
+        }
+        return result
+    }
+
+    private func itemType(from slot: ScanPrefillData.MealSlot) -> MealItemType {
         switch slot {
-        case .breakfast: return meal.breakfast
-        case .lunch: return meal.lunch
-        case .dinner: return meal.dinner
+        case .breakfast: return .breakfast
+        case .lunch: return .lunch
+        case .dinner: return .dinner
         }
     }
 
-    private func setField(_ slot: ScanPrefillData.MealSlot, _ value: Decimal) {
-        switch slot {
-        case .breakfast: breakfast = fieldString(value)
-        case .lunch: lunch = fieldString(value)
-        case .dinner: dinner = fieldString(value)
-        }
-    }
-
-    private func fieldString(_ value: Decimal) -> String {
+    private func formatString(_ value: Decimal) -> String {
         value > 0 ? String(format: "%.2f", NSDecimalNumber(decimal: value).doubleValue) : ""
-    }
-
-    private func money(_ value: Decimal) -> String {
-        "$" + String(format: "%.2f", NSDecimalNumber(decimal: value).doubleValue)
     }
 }

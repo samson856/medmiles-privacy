@@ -12,6 +12,7 @@ struct MealEditView: View {
     @State private var breakfast: String
     @State private var lunch: String
     @State private var dinner: String
+    @State private var extras: [EditableMealItem]
     @State private var selectedAgencyId: UUID?
     @State private var receiptNumber: String
     @State private var businessPurpose: String
@@ -23,9 +24,29 @@ struct MealEditView: View {
         self.viewModel = viewModel
 
         _date = State(initialValue: meal.displayDate)
-        _breakfast = State(initialValue: meal.breakfast > 0 ? "\(NSDecimalNumber(decimal: meal.breakfast).doubleValue)" : "")
-        _lunch = State(initialValue: meal.lunch > 0 ? "\(NSDecimalNumber(decimal: meal.lunch).doubleValue)" : "")
-        _dinner = State(initialValue: meal.dinner > 0 ? "\(NSDecimalNumber(decimal: meal.dinner).doubleValue)" : "")
+
+        // Spread the meal's line items into quick rows (first of each type) + extras.
+        var b = "", l = "", d = ""
+        var ex: [EditableMealItem] = []
+        var seen: Set<MealItemType> = []
+        for item in meal.items {
+            let s = item.amount > 0 ? String(format: "%.2f", NSDecimalNumber(decimal: item.amount).doubleValue) : ""
+            if seen.contains(item.type) {
+                ex.append(EditableMealItem(id: item.id, type: item.type, amount: s))
+            } else {
+                seen.insert(item.type)
+                switch item.type {
+                case .breakfast: b = s
+                case .lunch: l = s
+                case .dinner: d = s
+                }
+            }
+        }
+        _breakfast = State(initialValue: b)
+        _lunch = State(initialValue: l)
+        _dinner = State(initialValue: d)
+        _extras = State(initialValue: ex)
+
         _selectedAgencyId = State(initialValue: meal.agencyId)
         _receiptNumber = State(initialValue: meal.receiptNumber ?? "")
         _businessPurpose = State(initialValue: meal.businessPurpose ?? "")
@@ -33,10 +54,7 @@ struct MealEditView: View {
     }
 
     private var dayTotal: Decimal {
-        let b = Decimal(string: breakfast) ?? 0
-        let l = Decimal(string: lunch) ?? 0
-        let d = Decimal(string: dinner) ?? 0
-        return b + l + d
+        collectItems().reduce(0) { $0 + $1.amount }
     }
 
     var body: some View {
@@ -46,31 +64,37 @@ struct MealEditView: View {
             }
 
             Section(header: Text("Meals")) {
-                HStack {
-                    Text("Breakfast")
-                    Spacer()
-                    TextField("$0.00", text: $breakfast)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                mealRow("Breakfast", text: $breakfast)
+                mealRow("Lunch", text: $lunch)
+                mealRow("Dinner", text: $dinner)
+
+                ForEach($extras) { $extra in
+                    HStack {
+                        Text(extra.type.label)
+                        Spacer()
+                        TextField("$0.00", text: $extra.amount)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                        Button(role: .destructive) {
+                            extras.removeAll { $0.id == extra.id }
+                        } label: {
+                            Image(systemName: "trash")
+                                .foregroundColor(Color(Constants.Colors.errorRed))
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Remove \(extra.type.label)")
+                    }
                 }
 
-                HStack {
-                    Text("Lunch")
-                    Spacer()
-                    TextField("$0.00", text: $lunch)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
-                }
-
-                HStack {
-                    Text("Dinner")
-                    Spacer()
-                    TextField("$0.00", text: $dinner)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                Menu {
+                    Button("Breakfast") { addExtra(.breakfast) }
+                    Button("Lunch") { addExtra(.lunch) }
+                    Button("Dinner") { addExtra(.dinner) }
+                } label: {
+                    Label("Add another meal", systemImage: "plus.circle.fill")
+                        .font(.subheadline)
+                        .foregroundColor(Color(Constants.Colors.mintTeal))
                 }
 
                 HStack {
@@ -173,6 +197,34 @@ struct MealEditView: View {
         }
     }
 
+    private func mealRow(_ label: String, text: Binding<String>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            TextField("$0.00", text: text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 80)
+        }
+    }
+
+    private func addExtra(_ type: MealItemType) {
+        extras.append(EditableMealItem(type: type, amount: ""))
+    }
+
+    private func collectItems() -> [MealItem] {
+        var result: [MealItem] = []
+        if let b = Decimal(string: breakfast), b > 0 { result.append(MealItem(type: .breakfast, amount: b)) }
+        if let l = Decimal(string: lunch), l > 0 { result.append(MealItem(type: .lunch, amount: l)) }
+        if let d = Decimal(string: dinner), d > 0 { result.append(MealItem(type: .dinner, amount: d)) }
+        for extra in extras {
+            if let a = Decimal(string: extra.amount), a > 0 {
+                result.append(MealItem(id: extra.id, type: extra.type, amount: a))
+            }
+        }
+        return result
+    }
+
     private func updateMeal() {
         guard let userId = authService.currentSession?.user.id else { return }
         Task {
@@ -180,9 +232,7 @@ struct MealEditView: View {
                 mealId: meal.id,
                 userId: userId,
                 date: date,
-                breakfast: breakfast,
-                lunch: lunch,
-                dinner: dinner,
+                items: collectItems(),
                 agencyId: selectedAgencyId,
                 receiptNumber: receiptNumber,
                 notes: businessPurpose
