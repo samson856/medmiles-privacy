@@ -19,6 +19,7 @@ struct IndividualExpenseLogView: View {
     @State private var showSavedConfirmation = false
     @State private var showUpgradePrompt = false
     @State private var showUpgradeSheet = false
+    @State private var showManageCategories = false
 
     private var currentMonthExpenseCount: Int {
         let month = Calendar.current.component(.month, from: Date())
@@ -61,7 +62,23 @@ struct IndividualExpenseLogView: View {
             Section(header: Text("Details")) {
                 TextField("Item", text: $item)
 
-                TextField("Category / description", text: $purpose)
+                HStack {
+                    Picker("Category", selection: $category) {
+                        ForEach(ExpenseCategoryManager.shared.allCategories, id: \.value) { cat in
+                            Text(cat.label).tag(cat.value)
+                        }
+                    }
+                }
+
+                Button {
+                    showManageCategories = true
+                } label: {
+                    Label("Manage Categories", systemImage: "folder.badge.gearshape")
+                        .font(.caption)
+                        .foregroundColor(Color(Constants.Colors.mintTeal))
+                }
+
+                TextField("Description (optional)", text: $purpose)
             }
 
             Section(header: Text("Company")) {
@@ -162,6 +179,9 @@ struct IndividualExpenseLogView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Free accounts can log up to \(StoreKitService.freeMiscExpensesPerMonth) individual expenses per month. Upgrade to Pro for unlimited expenses.")
+        }
+        .sheet(isPresented: $showManageCategories) {
+            ManageCategoriesSheet()
         }
         .sheet(isPresented: $showUpgradeSheet) {
             NavigationStack {

@@ -16,6 +16,7 @@ struct IndividualExpenseEditView: View {
     @State private var amount: String
     @State private var receiptFilenames: [String]
     @State private var showDeleteConfirmation = false
+    @State private var showManageCategories = false
 
     init(expense: MiscExpense, viewModel: IndividualExpenseViewModel) {
         self.expense = expense
@@ -49,7 +50,23 @@ struct IndividualExpenseEditView: View {
             Section(header: Text("Details")) {
                 TextField("Item", text: $item)
 
-                TextField("Description", text: $purpose)
+                HStack {
+                    Picker("Category", selection: $category) {
+                        ForEach(ExpenseCategoryManager.shared.allCategories, id: \.value) { cat in
+                            Text(cat.label).tag(cat.value)
+                        }
+                    }
+                }
+
+                Button {
+                    showManageCategories = true
+                } label: {
+                    Label("Manage Categories", systemImage: "folder.badge.gearshape")
+                        .font(.caption)
+                        .foregroundColor(Color(Constants.Colors.mintTeal))
+                }
+
+                TextField("Description (optional)", text: $purpose)
             }
 
             Section(header: Text("Company")) {
@@ -149,6 +166,9 @@ struct IndividualExpenseEditView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Edit Expense")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showManageCategories) {
+            ManageCategoriesSheet()
+        }
         .confirmationDialog("Delete this expense?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 deleteExpense()

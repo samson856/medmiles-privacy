@@ -8,6 +8,7 @@ struct AgencyPicker: View {
 
     @State private var showAddSheet = false
     @State private var showManageSheet = false
+    @State private var manageAgencies: [Agency] = []
 
     private var selectedName: String {
         guard let id = selectedAgencyId else { return "Select agency" }
@@ -59,18 +60,23 @@ struct AgencyPicker: View {
             }
         }
         .sheet(isPresented: $showManageSheet) {
-            ManageAgenciesSheet(agencies: agencies, onDelete: { id in
+            ManageAgenciesSheet(agencies: $manageAgencies, onDelete: { id in
                 if selectedAgencyId == id {
                     selectedAgencyId = nil
                 }
                 onDelete?(id)
             })
         }
+        .onChange(of: showManageSheet) { _, isPresented in
+            if isPresented {
+                manageAgencies = agencies
+            }
+        }
     }
 }
 
 struct ManageAgenciesSheet: View {
-    let agencies: [Agency]
+    @Binding var agencies: [Agency]
     let onDelete: (UUID) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -88,7 +94,9 @@ struct ManageAgenciesSheet: View {
                     }
                     .onDelete { indexSet in
                         for index in indexSet {
-                            onDelete(agencies[index].id)
+                            let id = agencies[index].id
+                            onDelete(id)
+                            agencies.removeAll { $0.id == id }
                         }
                     }
                 }
